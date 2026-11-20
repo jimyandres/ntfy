@@ -1,4 +1,6 @@
 /target
 .env
 data.json
+data.json.*
+.tunnel-url
 .toolchain

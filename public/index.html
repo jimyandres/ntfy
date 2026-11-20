@@ -27,12 +27,23 @@
     .title { font-weight:600; }
     .body { margin-top:.2rem; word-break:break-word; }
     .time { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
+    input { width:100%; padding:.8rem; font-size:1.4rem; letter-spacing:.3em; text-align:center;
+            border:1px solid var(--muted); border-radius:10px; background:var(--card); color:var(--text);
+            margin-bottom:.5rem; }
+    [hidden] { display:none !important; }
   </style>
 </head>
 <body>
   <h1>Avisos</h1>
-  <button id="enable">Activar notificaciones</button>
-  <button id="test" class="secondary">Probar notificación (5s)</button>
+  <section id="pair" hidden>
+    <p>Escribe el código de 8 dígitos que muestra <code>scripts/tunnel.sh</code> en tu Mac.</p>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
+    <button id="pairBtn">Vincular</button>
+  </section>
+  <section id="main" hidden>
+    <button id="enable">Activar notificaciones</button>
+    <button id="test" class="secondary">Probar notificación (5s)</button>
+  </section>
   <p id="status"></p>
   <ul id="list"></ul>
   <script src="/app.js"></script>

@@ -1,7 +1,41 @@
-const btn = document.getElementById('enable');
-const testBtn = document.getElementById('test');
-const statusEl = document.getElementById('status');
-const list = document.getElementById('list');
+const $ = id => document.getElementById(id);
+const btn = $('enable');
+const testBtn = $('test');
+const statusEl = $('status');
+const list = $('list');
+const TOKEN_KEY = 'avisos_token';
+
+// La app instalada en la pantalla de inicio tiene su propio almacenamiento (separado de Safari),
+// así que la vinculación se hace dentro de la app instalada.
+function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch (_) { return null; }
+}
+function setToken(t) {
+  try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+}
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  const t = getToken();
+  if (t) headers.Authorization = 'Bearer ' + t;
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) {
+    setToken(null);
+    showPairing();
+    throw new Error('Esta app ya no está vinculada. Pide un código nuevo en el Mac.');
+  }
+  return res;
+}
+
+function showPairing() {
+  $('pair').hidden = false;
+  $('main').hidden = true;
+}
+
+function showMain() {
+  $('pair').hidden = true;
+  $('main').hidden = false;
+}
 
 function b64ToBytes(s) {
   const pad = '='.repeat((4 - (s.length % 4)) % 4);
@@ -10,7 +44,15 @@ function b64ToBytes(s) {
 }
 
 async function loadList() {
-  const items = await (await fetch('/api/notifications')).json();
+  if (!getToken()) return;
+  let items;
+  try {
+    items = await (await api('/api/notifications')).json();
+  } catch (_) {
+    // Túnel apagado: los avisos siguen llegando, solo el historial no está disponible.
+    if (!statusEl.textContent) statusEl.textContent = 'Sin conexión con el Mac (el historial no está disponible).';
+    return;
+  }
   list.innerHTML = '';
   for (const n of items) {
     const li = document.createElement('li');
@@ -25,6 +67,25 @@ async function loadList() {
       li.appendChild(div);
     }
     list.appendChild(li);
+  }
+}
+
+async function pair() {
+  const code = $('code').value.trim();
+  if (!/^\d{8}$/.test(code)) { statusEl.textContent = 'El código tiene 8 dígitos.'; return; }
+  try {
+    const res = await fetch('/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) { statusEl.textContent = 'Código incorrecto o vencido. Pide otro en el Mac.'; return; }
+    setToken((await res.json()).token);
+    showMain();
+    statusEl.textContent = 'Vinculado ✓ Ahora activa las notificaciones.';
+    loadList();
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
   }
 }
 
@@ -45,11 +106,12 @@ async function enable() {
         applicationServerKey: b64ToBytes(key),
       });
     }
-    await fetch('/api/subscribe', {
+    const res = await api('/api/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sub),
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     btn.hidden = true;
     statusEl.textContent = 'Notificaciones activadas ✓';
   } catch (e) {
@@ -58,9 +120,13 @@ async function enable() {
 }
 
 async function sendTest() {
-  statusEl.textContent = 'Enviando prueba en 5s...';
-  await fetch('/api/test', { method: 'POST' });
-  setTimeout(loadList, 5500);
+  try {
+    statusEl.textContent = 'Enviando prueba en 5s...';
+    await api('/api/test', { method: 'POST' });
+    setTimeout(loadList, 5500);
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 if ('serviceWorker' in navigator) {
@@ -71,7 +137,8 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+$('pairBtn').addEventListener('click', pair);
 btn.addEventListener('click', enable);
 testBtn.addEventListener('click', sendTest);
-loadList();
+if (getToken()) { showMain(); loadList(); } else { showPairing(); }
 setInterval(loadList, 10000);
